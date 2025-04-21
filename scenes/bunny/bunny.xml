@@ -18,11 +18,13 @@
 	</emitter>
 
 
+	<!--
 	<emitter type="point">
 		<position name="position" value="0.0 3.0 3.0"/>
 		<attenuation name="attenuation" value="1.0 0.09 0.032"/>
 		<radiance name="radiance" value="0.8 0.2 0.2"/>
 	</emitter>
+	-->
 
 	<!-- Render the scene viewed by a perspective camera -->
 	<camera type="perspective">

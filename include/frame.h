@@ -34,6 +34,12 @@ namespace MiniEngine
         alignas( 16 ) Vector4f m_metallic_roughness;
     };
 
+    struct SSAOData
+    {
+        //for now we only have material data
+        alignas(16) Vector4f m_SSAO[64];
+    };
+
     struct Frame
     {};
 };

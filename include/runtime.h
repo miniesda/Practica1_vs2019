@@ -26,6 +26,11 @@ namespace MiniEngine
             return m_per_object_buffer;
         }
 
+        inline const VkBuffer getSSAOBuffer() const
+        {
+            return m_ssao_buffer;
+        }
+
 
     private:
         explicit Runtime() = default;
@@ -42,6 +47,9 @@ namespace MiniEngine
 
         std::array<VkBuffer       , kMAX_NUMBER_OF_FRAMES> m_per_object_buffer = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
         std::array<VkDeviceMemory, kMAX_NUMBER_OF_FRAMES> m_per_object_buffer_memory;
+
+        VkBuffer m_ssao_buffer = VK_NULL_HANDLE;
+        VkDeviceMemory m_ssao_buffer_memory;
 
         friend class Engine;
     };

@@ -32,13 +32,14 @@ layout ( set = 0, binding = 1 ) uniform sampler2D i_albedo;
 layout ( set = 0, binding = 2 ) uniform sampler2D i_position_and_depth;
 layout ( set = 0, binding = 3 ) uniform sampler2D i_normal;
 layout ( set = 0, binding = 4 ) uniform sampler2D i_material;
-
+layout ( set = 0, binding = 5 ) uniform sampler2D i_ssao;
 
 layout(location = 0) out vec4 out_color;
 
 
 vec3 evalDiffuse()
 {
+    float ambientOcclussion = texture(i_ssao, f_uvs).r;
     vec4  albedo       = texture( i_albedo  , f_uvs );
     vec3  n            = normalize( texture( i_normal, f_uvs ).rgb * 2.0 - 1.0 );    
     vec3  frag_pos     = texture( i_position_and_depth, f_uvs ).xyz;
@@ -71,7 +72,7 @@ vec3 evalDiffuse()
             }
             case 2: //ambient
             {
-                shading += light.m_radiance.rgb * albedo.rgb;
+                shading += light.m_radiance.rgb * albedo.rgb * ambientOcclussion;
                 break;
             }
         }
@@ -118,6 +119,7 @@ vec3 brdf(vec3 L, vec3 V, vec3 N, vec3 albedo, float rough, float metal, vec3 F0
 
 vec3 evalMicrofac(float metal, float rough)
 {
+    float ambientOcclussion = texture(i_ssao, f_uvs).r;
     vec4  albedo       = texture( i_albedo  , f_uvs );
     vec3  n            = normalize( texture( i_normal, f_uvs ).rgb * 2.0 - 1.0 );    
     vec3  frag_pos     = texture( i_position_and_depth, f_uvs ).xyz;
@@ -154,7 +156,7 @@ vec3 evalMicrofac(float metal, float rough)
             }
             case 2: //ambient
             {
-                shading += light.m_radiance.rgb * albedo.rgb / PI;
+                shading += light.m_radiance.rgb * albedo.rgb / PI * ambientOcclussion;
                 break;
             }
         }

@@ -1,6 +1,6 @@
 #include "common.h"
 #include "vulkan/utilsVK.h"
-#include "vulkan/deferredPassVK.h"
+#include "vulkan/deferredPassVKPrepass.h"
 #include "vulkan/rendererVK.h"
 #include "vulkan/deviceVK.h"
 #include "vulkan/windowVK.h"
@@ -15,19 +15,11 @@
 using namespace MiniEngine;
 
 
-DeferredPassVK::DeferredPassVK(
+DeferredPassVKPrepass::DeferredPassVKPrepass(
     const Runtime& i_runtime,
-    const ImageBlock& i_depth_buffer,
-    const ImageBlock& i_color_attachment,
-    const ImageBlock& i_normals_attachment,
-    const ImageBlock& i_position_attachment,
-    const ImageBlock& i_material_attachment ) :
+    const ImageBlock& i_depth_buffer ):
     RenderPassVK         ( i_runtime             ),
-    m_depth_buffer       ( i_depth_buffer        ),
-    m_color_attachment   ( i_color_attachment    ),
-    m_normals_attachment ( i_normals_attachment  ),
-    m_position_attachment( i_position_attachment ),
-    m_material_attachment( i_material_attachment )    
+    m_depth_buffer       ( i_depth_buffer        )
 {
     for( auto cmd : m_command_buffer )
     {
@@ -36,12 +28,12 @@ DeferredPassVK::DeferredPassVK(
 }
 
 
-DeferredPassVK::~DeferredPassVK()
+DeferredPassVKPrepass::~DeferredPassVKPrepass()
 {
 }
 
 
-bool DeferredPassVK::initialize()
+bool DeferredPassVKPrepass::initialize()
 {
     RendererVK& renderer = *m_runtime.m_renderer;
 
@@ -53,10 +45,6 @@ bool DeferredPassVK::initialize()
     //SHADER STAGES
     {
         VkShaderModule vert_module        = m_runtime.m_shader_registry->loadShader( "./shaders/vert.spv"       , VK_SHADER_STAGE_VERTEX_BIT   );
-        VkShaderModule diffuse_module     = m_runtime.m_shader_registry->loadShader( "./shaders/diffuse.spv"    , VK_SHADER_STAGE_FRAGMENT_BIT );
-
-        //change spv for microfacets in the future
-        VkShaderModule PBRdiffuse_module  = m_runtime.m_shader_registry->loadShader("./shaders/diffusePBR.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
         
         { // difuse
             VkPipelineShaderStageCreateInfo vert_shader{};
@@ -65,31 +53,8 @@ bool DeferredPassVK::initialize()
             vert_shader.module  = vert_module;
             vert_shader.pName   = "main";
 
-            VkPipelineShaderStageCreateInfo frag_shader{};
-            frag_shader.sType   = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            frag_shader.stage   = VK_SHADER_STAGE_FRAGMENT_BIT;
-            frag_shader.module  = diffuse_module;
-            frag_shader.pName   = "main";
 
             m_pipelines[ static_cast<uint32_t>( Material::TMaterial::Diffuse ) ].m_shader_stages[ 0 ] = vert_shader;
-            m_pipelines[ static_cast<uint32_t>( Material::TMaterial::Diffuse ) ].m_shader_stages[ 1 ] = frag_shader;
-        }
-
-        { // PBR
-            VkPipelineShaderStageCreateInfo vert_shader{};
-            vert_shader.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            vert_shader.stage = VK_SHADER_STAGE_VERTEX_BIT;
-            vert_shader.module = vert_module;
-            vert_shader.pName = "main";
-
-            VkPipelineShaderStageCreateInfo frag_shader{};
-            frag_shader.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            frag_shader.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-            frag_shader.module = PBRdiffuse_module;
-            frag_shader.pName = "main";
-
-            m_pipelines[static_cast<uint32_t>(Material::TMaterial::Microfacets)].m_shader_stages[0] = vert_shader;
-            m_pipelines[static_cast<uint32_t>(Material::TMaterial::Microfacets)].m_shader_stages[1] = frag_shader;
         }
     }
 
@@ -110,7 +75,7 @@ bool DeferredPassVK::initialize()
 }
 
 
-void DeferredPassVK::shutdown()
+void DeferredPassVKPrepass::shutdown()
 {
     RendererVK& renderer = *m_runtime.m_renderer;
 
@@ -138,7 +103,7 @@ void DeferredPassVK::shutdown()
 }
 
 
-VkCommandBuffer DeferredPassVK::draw( const Frame& i_frame)
+VkCommandBuffer DeferredPassVKPrepass::draw( const Frame& i_frame)
 {
     RendererVK& renderer = *m_runtime.m_renderer;
 
@@ -163,11 +128,8 @@ VkCommandBuffer DeferredPassVK::draw( const Frame& i_frame)
     render_pass_info.renderArea.offset    = { 0, 0 };
     render_pass_info.renderArea.extent    = { width, height };
 
-    std::array<VkClearValue, 4> clear_values;
-    clear_values[ 0 ].color          = { { 0.0f, 0.0f, 0.0f, 0.0f } };
-    clear_values[ 1 ].color          = { { 0.0f, 0.0f, 0.0f, 0.0f } };
-    clear_values[ 2 ].color          = { { 0.0f, 0.0f, 0.0f, 0.0f } };
-    clear_values[ 3 ].color          = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+    std::array<VkClearValue, 1> clear_values;
+    clear_values[ 0 ].depthStencil   = { 1.0f, 0 };
 
     render_pass_info.clearValueCount = static_cast<uint32_t>( clear_values.size() );
     render_pass_info.pClearValues    = clear_values.data();
@@ -177,22 +139,19 @@ VkCommandBuffer DeferredPassVK::draw( const Frame& i_frame)
         throw MiniEngineException( "failed to begin recording command buffer!" );
     }
     
-    UtilsVK::beginRegion( current_cmd, "GBuffer Pass", Vector4f( 0.0f, 0.5f, 0.0f, 1.0f ) );
+    UtilsVK::beginRegion( current_cmd, "Depth Prepass", Vector4f( 0.0f, 0.5f, 0.0f, 1.0f ) );
     vkCmdBeginRenderPass( current_cmd, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE );
 
-    for( uint32_t mat_id = static_cast<uint32_t>( Material::TMaterial::Diffuse ); mat_id < static_cast<uint32_t>( m_pipelines.size() ); mat_id++ )
+    
+    vkCmdBindPipeline      ( current_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelines[ 0 ].m_pipeline );
+    vkCmdBindDescriptorSets( current_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelines[ 0 ].m_pipeline_layouts, 0, 2, &m_pipelines[ 0 ].m_descriptor_sets[ renderer.getWindow().getCurrentImageId() ].m_per_frame_descriptor, 0, nullptr );
+
+    for (auto const & entities : m_entities_to_draw)
     {
-        UtilsVK::beginRegion( current_cmd, mat_id == 0 ? "Diffuse GBuffer Pass" : mat_id == 1 ? "Dielectric GBuffer Pass" : "Microfacets GBuffer Pass", Vector4f( 0.0f, 0.5f, 0.5f, 1.0f ) );
-
-        vkCmdBindPipeline      ( current_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelines[ mat_id ].m_pipeline );
-        vkCmdBindDescriptorSets( current_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelines[ mat_id ].m_pipeline_layouts, 0, 2, &m_pipelines[ mat_id ].m_descriptor_sets[ renderer.getWindow().getCurrentImageId() ].m_per_frame_descriptor, 0, nullptr );
-
-        for( auto entity : m_entities_to_draw[ mat_id ] )
+        for (auto entity : entities.second)
         {
-            entity->draw( current_cmd, i_frame );
+            entity->draw(current_cmd, i_frame);
         }
-
-        UtilsVK::endRegion( current_cmd );
     }
     
     vkCmdEndRenderPass( current_cmd );
@@ -207,14 +166,14 @@ VkCommandBuffer DeferredPassVK::draw( const Frame& i_frame)
 }
 
 
-void DeferredPassVK::addEntityToDraw( const EntityPtr i_entity )
+void DeferredPassVKPrepass::addEntityToDraw( const EntityPtr i_entity )
 {
     m_entities_to_draw[ static_cast<uint32_t>( i_entity->getMaterial().getType() ) ].push_back( i_entity );
 }
 
 
 
-void DeferredPassVK::createFbo()
+void DeferredPassVKPrepass::createFbo()
 {
     RendererVK& renderer = *m_runtime.m_renderer;
 
@@ -223,12 +182,8 @@ void DeferredPassVK::createFbo()
 
     for( size_t i = 0; i < m_fbos.size(); i++ )
     {
-        std::array<VkImageView, 5> attachments;
-        attachments[ 0 ] = m_color_attachment.m_image_view;     // Color attachment
-        attachments[ 1 ] = m_normals_attachment.m_image_view;   // Normal attachment
-        attachments[ 2 ] = m_position_attachment.m_image_view;  // Position + depth attachment
-        attachments[ 3 ] = m_material_attachment.m_image_view;  // material
-        attachments[ 4 ] = m_depth_buffer.m_image_view;         // depth buffer
+        std::array<VkImageView, 1> attachments;
+        attachments[ 0 ] = m_depth_buffer.m_image_view;         // depth buffer
 
         VkFramebufferCreateInfo framebuffer_create_info = {};
         framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -250,89 +205,31 @@ void DeferredPassVK::createFbo()
 
 
 
-void DeferredPassVK::createRenderPass()
+void DeferredPassVKPrepass::createRenderPass()
 {
     RendererVK& renderer = *m_runtime.m_renderer;
 
-    std::array<VkAttachmentDescription, 5> attachments = {};
+    std::array<VkAttachmentDescription, 1> attachments = {};
 
-    // Color attachment
-    attachments[ 0 ].format         = m_color_attachment.m_format;
+    // Depth  attachment
+    attachments[ 0 ].format         = m_depth_buffer.m_format;
     attachments[ 0 ].samples        = VK_SAMPLE_COUNT_1_BIT;
     attachments[ 0 ].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachments[ 0 ].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-    attachments[ 0 ].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[ 0 ].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[ 0 ].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[ 0 ].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachments[ 0 ].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[ 0 ].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-    // Normal attachment
-    attachments[ 1 ].format         = m_normals_attachment.m_format;
-    attachments[ 1 ].samples        = VK_SAMPLE_COUNT_1_BIT;
-    attachments[ 1 ].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[ 1 ].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-    attachments[ 1 ].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[ 1 ].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[ 1 ].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[ 1 ].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-    // Position + depth  attachment
-    attachments[ 2 ].format         = m_position_attachment.m_format;
-    attachments[ 2 ].samples        = VK_SAMPLE_COUNT_1_BIT;
-    attachments[ 2 ].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[ 2 ].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-    attachments[ 2 ].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[ 2 ].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[ 2 ].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[ 2 ].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-    // MAterial  attachment
-    attachments[ 3 ].format         = m_material_attachment.m_format;
-    attachments[ 3 ].samples        = VK_SAMPLE_COUNT_1_BIT;
-    attachments[ 3 ].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[ 3 ].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-    attachments[ 3 ].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[ 3 ].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[ 3 ].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[ 3 ].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-    // Depth  attachment
-    attachments[ 4 ].format         = m_depth_buffer.m_format;
-    attachments[ 4 ].samples        = VK_SAMPLE_COUNT_1_BIT;
-    attachments[ 4 ].loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
-    attachments[ 4 ].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-    attachments[ 4 ].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_LOAD;
-    attachments[ 4 ].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachments[ 4 ].initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    attachments[ 4 ].finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-
-    VkAttachmentReference color_reference = {};
-    color_reference.attachment = 0;
-    color_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentReference normal_reference = {};
-    normal_reference.attachment = 1;
-    normal_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentReference position_reference = {};
-    position_reference.attachment = 2;
-    position_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentReference material_reference = {};
-    material_reference.attachment = 3;
-    material_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachments[ 0 ].finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
     VkAttachmentReference depth_reference = {};
-    depth_reference.attachment = 4;
+    depth_reference.attachment = 0;
     depth_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    std::array<VkAttachmentReference, 4> attachments_references = { color_reference, normal_reference, position_reference, material_reference };
 
     VkSubpassDescription subpass_description = {};
     subpass_description.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass_description.colorAttachmentCount    = attachments_references.size();
-    subpass_description.pColorAttachments       = attachments_references.data();
+    subpass_description.colorAttachmentCount    = 0;
+    subpass_description.pColorAttachments       = nullptr;
     subpass_description.pDepthStencilAttachment = &depth_reference;
     subpass_description.inputAttachmentCount    = 0;
     subpass_description.pInputAttachments       = nullptr;
@@ -375,7 +272,7 @@ void DeferredPassVK::createRenderPass()
 }
 
 
-void DeferredPassVK::createPipelines()
+void DeferredPassVKPrepass::createPipelines()
 {
     RendererVK& renderer = *m_runtime.m_renderer;
     
@@ -418,7 +315,7 @@ void DeferredPassVK::createPipelines()
     VkPipelineDepthStencilStateCreateInfo depth_stencil{};
     depth_stencil.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     depth_stencil.depthTestEnable       = VK_TRUE;
-    depth_stencil.depthWriteEnable      = VK_FALSE;
+    depth_stencil.depthWriteEnable      = VK_TRUE;
     depth_stencil.depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL;
     depth_stencil.depthBoundsTestEnable = VK_FALSE;
     depth_stencil.stencilTestEnable     = VK_FALSE;
@@ -444,24 +341,13 @@ void DeferredPassVK::createPipelines()
     raster_info.depthBiasSlopeFactor    = 0.f;
     raster_info.lineWidth               = 1.f;
     
-    VkPipelineColorBlendAttachmentState color_blend_attachment{};
-    color_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    color_blend_attachment.blendEnable = VK_FALSE;
-
-    std::array<VkPipelineColorBlendAttachmentState, 4> blend_state =
-    {
-        color_blend_attachment,
-        color_blend_attachment,
-        color_blend_attachment,
-        color_blend_attachment
-    };
 
     VkPipelineColorBlendStateCreateInfo color_blending{};
     color_blending.sType                = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     color_blending.logicOpEnable        = VK_FALSE;
     color_blending.logicOp              = VK_LOGIC_OP_COPY;
-    color_blending.attachmentCount      = blend_state.size();
-    color_blending.pAttachments         = blend_state.data();
+    color_blending.attachmentCount      = 0;
+    color_blending.pAttachments         = nullptr;
     color_blending.blendConstants[0]    = 0.0f;
     color_blending.blendConstants[1]    = 0.0f;
     color_blending.blendConstants[2]    = 0.0f;
@@ -552,7 +438,7 @@ void DeferredPassVK::createPipelines()
 }
 
 
-void DeferredPassVK::createDescriptorLayout()
+void DeferredPassVKPrepass::createDescriptorLayout()
 {
     // PER FRAME
     VkDescriptorSetLayoutBinding per_frame_binding = {};
@@ -597,7 +483,7 @@ void DeferredPassVK::createDescriptorLayout()
 }
 
 
-void DeferredPassVK::createDescriptors()
+void DeferredPassVKPrepass::createDescriptors()
 {
     //create a descriptor pool that will hold 10 uniform buffers
     std::vector<VkDescriptorPoolSize> sizes =

@@ -16,7 +16,10 @@
 #include "vulkan/rendererVK.h"
 #include "vulkan/renderPassVK.h"
 #include "vulkan/deferredPassVK.h"
+#include "vulkan/deferredPassVKPrepass.h"
 #include "vulkan/compositionPassVK.h"
+#include "vulkan/compositionPassVKSSAO.h"
+#include "vulkan/compositionPassVKBlur.h"
 #include "vulkan/windowVK.h"
 #include "vulkan/deviceVK.h"
 #include "vulkan/utilsVK.h"
@@ -259,6 +262,12 @@ void Engine::createRenderPasses ()
     }
     m_render_passes.clear();
     
+    auto depth_prepass = std::make_shared<DeferredPassVKPrepass>(
+        m_runtime,
+        m_render_target_attachments.m_depth_attachment);
+    depth_prepass->initialize();
+
+    m_render_passes.push_back(depth_prepass);
 
     auto gbuffer_pass = std::make_shared<DeferredPassVK>(
         m_runtime, 
@@ -271,8 +280,31 @@ void Engine::createRenderPasses ()
 
     m_render_passes.push_back( gbuffer_pass );
 
+    auto ambient_oclussion_pass = std::make_shared<CompositionPassVKSSAO>(
+        m_runtime,
+        m_render_target_attachments.m_position_depth_attachment,
+        m_render_target_attachments.m_normal_attachment,
+        m_render_target_attachments.m_ssao_noise_attachment,              
+        m_render_target_attachments.m_ssao_attachment);
+    ambient_oclussion_pass->initialize();
 
-    auto composition_pass = std::make_shared<CompositionPassVK>( m_runtime, m_render_target_attachments.m_color_attachment, m_render_target_attachments.m_position_depth_attachment, m_render_target_attachments.m_normal_attachment, m_render_target_attachments.m_material_attachment, m_runtime.m_renderer->getWindow().getSwapChainImages() );
+    m_render_passes.push_back(ambient_oclussion_pass);
+
+    auto blur_pass = std::make_shared<CompositionPassVKBlur>(m_runtime,
+        m_render_target_attachments.m_ssao_attachment,
+        m_render_target_attachments.m_ssao_blur_attachment);
+    blur_pass->initialize();
+
+    m_render_passes.push_back(blur_pass);
+
+
+    auto composition_pass = std::make_shared<CompositionPassVK>( m_runtime, 
+        m_render_target_attachments.m_color_attachment, 
+        m_render_target_attachments.m_position_depth_attachment, 
+        m_render_target_attachments.m_normal_attachment, 
+        m_render_target_attachments.m_material_attachment, 
+        m_render_target_attachments.m_ssao_blur_attachment,
+        m_runtime.m_renderer->getWindow().getSwapChainImages() );
     composition_pass->initialize();
 
     m_render_passes.push_back( composition_pass );
@@ -390,6 +422,22 @@ void Engine::createAttachments()
     UtilsVK::createImage( *m_runtime.m_renderer->getDevice(), VK_FORMAT_R8_UNORM           , VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT        , width, height, m_render_target_attachments.m_ssao_attachment           );
     UtilsVK::createImage( *m_runtime.m_renderer->getDevice(), VK_FORMAT_R8_UNORM           , VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT        , width, height, m_render_target_attachments.m_ssao_blur_attachment      );
 
+    std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // random floats between [0.0, 1.0]
+    std::default_random_engine generator;
+
+    std::array<Vector4f, 16> ssao_noise;
+
+    for (unsigned int i = 0; i < 16; ++i)
+    {
+        glm::vec4 noise(
+            randomFloats(generator) * 2.0 - 1.0,
+            randomFloats(generator) * 2.0 - 1.0,
+            0.0f, 0.0f);
+        ssao_noise[i] = (noise);
+    }
+
+    UtilsVK::TextureFromBuffer(*m_runtime.m_renderer->getDevice(), ssao_noise.data(), sizeof(ssao_noise), VK_FORMAT_R32G32B32A32_SFLOAT, 4, 4, m_render_target_attachments.m_ssao_noise_attachment);
+
     m_render_target_attachments.m_color_attachment.m_sampler            = m_global_samplers[ 0 ];         
     m_render_target_attachments.m_normal_attachment.m_sampler           = m_global_samplers[ 0 ];        
     m_render_target_attachments.m_position_depth_attachment.m_sampler   = m_global_samplers[ 0 ];
@@ -397,6 +445,7 @@ void Engine::createAttachments()
     m_render_target_attachments.m_depth_attachment.m_sampler            = m_global_samplers[ 0 ];         
     m_render_target_attachments.m_ssao_attachment.m_sampler             = m_global_samplers[ 0 ];          
     m_render_target_attachments.m_ssao_blur_attachment.m_sampler        = m_global_samplers[ 0 ]; 
+    m_render_target_attachments.m_ssao_noise_attachment.m_sampler = m_global_samplers[0];
 
     UtilsVK::setObjectName( m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)( m_render_target_attachments.m_color_attachment.m_image          ), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image Color Attachment"    );
     UtilsVK::setObjectName( m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)( m_render_target_attachments.m_normal_attachment.m_image         ), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image Normal Attachment "  );
@@ -405,6 +454,7 @@ void Engine::createAttachments()
     UtilsVK::setObjectName( m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)( m_render_target_attachments.m_depth_attachment.m_image          ), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image Depth Buffer"        );
     UtilsVK::setObjectName( m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)( m_render_target_attachments.m_ssao_attachment.m_image           ), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image SSAO attachment"     );
     UtilsVK::setObjectName( m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)( m_render_target_attachments.m_ssao_blur_attachment.m_image      ), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image SSAO blur "          );
+    UtilsVK::setObjectName(m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)(m_render_target_attachments.m_ssao_noise_attachment.m_image), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image SSAO noise ");
 }
 
 
@@ -417,6 +467,7 @@ void Engine::destroyAttachments()
     UtilsVK::freeImageBlock( *m_runtime.m_renderer->getDevice(), m_render_target_attachments.m_depth_attachment          );
     UtilsVK::freeImageBlock( *m_runtime.m_renderer->getDevice(), m_render_target_attachments.m_ssao_attachment           );
     UtilsVK::freeImageBlock( *m_runtime.m_renderer->getDevice(), m_render_target_attachments.m_ssao_blur_attachment      );
+    UtilsVK::freeImageBlock(*m_runtime.m_renderer->getDevice(), m_render_target_attachments.m_ssao_noise_attachment);
 }
 
 
@@ -427,9 +478,9 @@ void Engine::createSamplers()
 	sampler.magFilter       = VK_FILTER_NEAREST;
 	sampler.minFilter       = VK_FILTER_NEAREST;
 	sampler.mipmapMode      = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	sampler.addressModeU    = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	sampler.addressModeV    = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	sampler.addressModeW    = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler.addressModeU    = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sampler.addressModeV    = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sampler.addressModeW    = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	sampler.mipLodBias      = 0.0f;
 	sampler.maxAnisotropy   = 1.0f;
 	sampler.minLod          = 0.0f;
