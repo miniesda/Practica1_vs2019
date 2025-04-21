@@ -124,7 +124,7 @@ vec3 evalMicrofac(float metal, float rough)
     vec3  n            = normalize( texture( i_normal, f_uvs ).rgb * 2.0 - 1.0 );    
     vec3  frag_pos     = texture( i_position_and_depth, f_uvs ).xyz;
     vec3  shading = vec3( 0.0 );
-    vec3 v = per_frame_data.m_camera_pos.xyz - frag_pos;
+    vec3 v = - frag_pos;
     v = normalize(v);
     vec3 F0 = mix(vec3(0.04), albedo.rgb, metal);
 

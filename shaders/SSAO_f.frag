@@ -30,8 +30,8 @@ layout ( set = 0, binding = 1 ) uniform sampler2D i_position_and_depth;
 layout ( set = 0, binding = 2 ) uniform sampler2D i_normal;
 layout ( set = 0, binding = 3 ) uniform sampler2D i_noise;
 
-float radius = 0.5;
-float bias = 0.025;
+const float radius = 0.5;
+const float bias = 0.025;
 
 layout( std140, set = 0, binding = 4 ) uniform KernelData
 {
@@ -44,14 +44,18 @@ layout(location = 0) out float out_color;
 void main()
 {
 // get input for SSAO algorithm
-    vec2 noiseScale = vec2(textureSize(i_normal, 0)) / vec2(textureSize(i_noise, 0));
+    vec2 noiseScale = vec2(textureSize(i_position_and_depth, 0)) / vec2(textureSize(i_noise, 0));
 
-    vec3 fragPos = (per_frame_data.m_view * vec4(texture(i_position_and_depth, f_uvs).xyz,1)).xyz;
-    vec3 normal = normalize(mat3(per_frame_data.m_inv_view) * (texture (i_normal, f_uvs).rgb * 2.0 - 1.0));
-    vec3 randomVec = normalize(texture (i_noise, f_uvs* noiseScale).xyz); // create TBN change-of-basis matrix: from tangent-space to view-space
+    vec3 fragPos = texture(i_position_and_depth, f_uvs).xyz;
+    vec3 normal = texture (i_normal, f_uvs).rgb * 2.0 - 1.0;
+    vec3 randomVec = vec3(texture (i_noise, f_uvs* noiseScale).xy, 0); 
+    
+    // create TBN change-of-basis matrix: from tangent-space to view-space
+    
     vec3 tangent = normalize(randomVec - normal * dot (randomVec, normal));
     vec3 bitangent = cross(normal, tangent);
     mat3 TBN = mat3 (tangent, bitangent, normal);
+
     // iterate over the sample kernel and calculate occlusion factor 
     float occlusion = 0.0;
     
@@ -61,11 +65,12 @@ void main()
     
         vec3 samplePos = TBN * kernel_data.m_kernel_data[i].xyz; // from tangent to view-space
         samplePos = fragPos + samplePos * radius;
+
         // project sample position (to sample texture) (to get position on screen/texture)
-        vec4 offset = vec4(samplePos,1);
+        vec4 offset = vec4(samplePos,1.0);
         offset = per_frame_data.m_projection * offset; // from view to clip-space
-        offset.xyz/= offset.w; // perspective divide
-        offset.xyz = offset.xyz* 0.5 + 0.5; // transform to range 0.0 1.0
+        offset.xy /= offset.w; // perspective divide
+        offset.xy = offset.xy * 0.5 + 0.5; // transform to range 0.0 1.0
 
         // get sample depth
         float sampleDepth = (per_frame_data.m_view * vec4( texture (i_position_and_depth, offset.xy).xyz, 1) ).z; // get depth value of kernel sample

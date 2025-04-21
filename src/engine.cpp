@@ -361,7 +361,16 @@ void Engine::updateGlobalBuffers()
        
         auto light = m_scene->getLights()[ perframe_data.m_number_of_lights ];
 
-        perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_light_pos    = Vector4f( light->m_data.m_position.x   , light->m_data.m_position.y   , light->m_data.m_position.z   , light->m_data.m_type );
+        //Convert the light pos
+        glm::vec3 lightPos;
+        if (light->m_data.m_type == Light::LightType::Directional)
+            lightPos = glm::vec3(perframe_data.m_view * glm::vec4(light->m_data.m_position, 0));
+        else if (light->m_data.m_type == Light::LightType::Point)
+            lightPos = glm::vec3(perframe_data.m_view * glm::vec4(light->m_data.m_position, 1));
+        else
+            lightPos = light->m_data.m_position;
+
+        perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_light_pos    = Vector4f( lightPos.x   , lightPos.y, lightPos.z   , light->m_data.m_type );
         perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_radiance     = Vector4f( light->m_data.m_radiance.x   , light->m_data.m_radiance.y   , light->m_data.m_radiance.z   , 0.0f                 );
         perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_attenuattion = Vector4f( light->m_data.m_attenuation.x, light->m_data.m_attenuation.y, light->m_data.m_attenuation.z, 0.0f                 );
     }
