@@ -39,7 +39,11 @@ layout ( set = 0, binding = 6 ) uniform sampler2DArray i_shadow;
 layout(location = 0) out vec4 out_color;
 
 
-#define ShadowBias 0.0001
+#define ShadowBias 0.00015
+
+#define PCF_SIZE 9
+#define PCF_SAMPLES (PCF_SIZE * PCF_SIZE)
+#define FILTER_SIZE (1.0 / 2048.0)
 
 float evalVisibility(vec3 frag_pos, uint lightEval)
 {   
@@ -49,11 +53,29 @@ float evalVisibility(vec3 frag_pos, uint lightEval)
 
     pos.xy = pos.xy*0.5+0.5;
 
-    float depth = texture(i_shadow,vec3(pos.xy,lightEval)).r + ShadowBias;
-
-    if(depth > pos.z) //Change to smooth shadows //1 illum
+    //Early exit outside map
+    if (pos.x > 1.0 || pos.x < 0.0 || pos.y > 1.0 || pos.y < 0.0 || pos.z > 1.0 || pos.z < 0.0)
         return 1;
-    return 0;
+
+    // PCF filtering
+    float visibility = 0.0;
+    float currentDepth = pos.z;
+
+    for(int x = -PCF_SIZE/2; x <= PCF_SIZE/2; ++x)
+    {
+        for(int y = -PCF_SIZE/2; y <= PCF_SIZE/2; ++y)
+        {
+            // Sample shadow map with offset
+            float closestDepth = texture(i_shadow, vec3(pos.xy + vec2(x, y) * FILTER_SIZE, lightEval)).r;
+            // Apply bias and test visibility
+            visibility += currentDepth - ShadowBias > closestDepth ? 0.0 : 1.0;
+        }
+    }
+    
+    // Average the samples
+    visibility /= PCF_SAMPLES;
+    
+    return visibility;
 }
 
 vec3 evalDiffuse()
