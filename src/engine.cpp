@@ -17,6 +17,7 @@
 #include "vulkan/renderPassVK.h"
 #include "vulkan/deferredPassVK.h"
 #include "vulkan/deferredPassVKPrepass.h"
+#include "vulkan/shadowPassVK.h"
 #include "vulkan/compositionPassVK.h"
 #include "vulkan/compositionPassVKSSAO.h"
 #include "vulkan/compositionPassVKBlur.h"
@@ -269,6 +270,13 @@ void Engine::createRenderPasses ()
 
     m_render_passes.push_back(depth_prepass);
 
+    auto shadow_pass = std::make_shared<ShadowPassVK>(
+        m_runtime,
+        m_render_target_attachments.m_shadow_attachment);
+    shadow_pass->initialize();
+
+    m_render_passes.push_back(shadow_pass);
+
     auto gbuffer_pass = std::make_shared<DeferredPassVK>(
         m_runtime, 
         m_render_target_attachments.m_depth_attachment, 
@@ -304,6 +312,7 @@ void Engine::createRenderPasses ()
         m_render_target_attachments.m_normal_attachment, 
         m_render_target_attachments.m_material_attachment, 
         m_render_target_attachments.m_ssao_blur_attachment,
+        m_render_target_attachments.m_shadow_attachment,
         m_runtime.m_renderer->getWindow().getSwapChainImages() );
     composition_pass->initialize();
 
@@ -373,6 +382,7 @@ void Engine::updateGlobalBuffers()
         perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_light_pos    = Vector4f( lightPos.x   , lightPos.y, lightPos.z   , light->m_data.m_type );
         perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_radiance     = Vector4f( light->m_data.m_radiance.x   , light->m_data.m_radiance.y   , light->m_data.m_radiance.z   , 0.0f                 );
         perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_attenuattion = Vector4f( light->m_data.m_attenuation.x, light->m_data.m_attenuation.y, light->m_data.m_attenuation.z, 0.0f                 );
+        perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_view_projection = Light::getLightSpaceMatrix(light, const_cast< Camera& >( m_scene->getCamera() ) );
     }
 
 
@@ -430,6 +440,7 @@ void Engine::createAttachments()
     UtilsVK::createImage( *m_runtime.m_renderer->getDevice(), VK_FORMAT_D32_SFLOAT_S8_UINT , VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, width, height, m_render_target_attachments.m_depth_attachment          );
     UtilsVK::createImage( *m_runtime.m_renderer->getDevice(), VK_FORMAT_R8_UNORM           , VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT        , width, height, m_render_target_attachments.m_ssao_attachment           );
     UtilsVK::createImage( *m_runtime.m_renderer->getDevice(), VK_FORMAT_R8_UNORM           , VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT        , width, height, m_render_target_attachments.m_ssao_blur_attachment      );
+    UtilsVK::createImage( *m_runtime.m_renderer->getDevice(), VK_FORMAT_D32_SFLOAT_S8_UINT , VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, shadowResol, shadowResol, kMAX_NUMBER_LIGHTS, 1, IMAGE_BLOCK_2D_ARRAY, m_render_target_attachments.m_shadow_attachment);
 
     std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // random floats between [0.0, 1.0]
     std::default_random_engine generator;
@@ -454,7 +465,8 @@ void Engine::createAttachments()
     m_render_target_attachments.m_depth_attachment.m_sampler            = m_global_samplers[ 0 ];         
     m_render_target_attachments.m_ssao_attachment.m_sampler             = m_global_samplers[ 0 ];          
     m_render_target_attachments.m_ssao_blur_attachment.m_sampler        = m_global_samplers[ 0 ]; 
-    m_render_target_attachments.m_ssao_noise_attachment.m_sampler = m_global_samplers[0];
+    //m_render_target_attachments.m_ssao_noise_attachment.m_sampler       = m_global_samplers[ 0 ];
+    m_render_target_attachments.m_shadow_attachment.m_sampler           = m_global_samplers[ 0 ]; 
 
     UtilsVK::setObjectName( m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)( m_render_target_attachments.m_color_attachment.m_image          ), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image Color Attachment"    );
     UtilsVK::setObjectName( m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)( m_render_target_attachments.m_normal_attachment.m_image         ), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image Normal Attachment "  );
@@ -464,6 +476,7 @@ void Engine::createAttachments()
     UtilsVK::setObjectName( m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)( m_render_target_attachments.m_ssao_attachment.m_image           ), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image SSAO attachment"     );
     UtilsVK::setObjectName( m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)( m_render_target_attachments.m_ssao_blur_attachment.m_image      ), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image SSAO blur "          );
     UtilsVK::setObjectName(m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)(m_render_target_attachments.m_ssao_noise_attachment.m_image), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image SSAO noise ");
+    UtilsVK::setObjectName(m_runtime.m_renderer->getDevice()->getLogicalDevice(), (uint64_t)(m_render_target_attachments.m_shadow_attachment.m_image), VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT, "Image Shadow noise ");
 }
 
 
@@ -477,6 +490,7 @@ void Engine::destroyAttachments()
     UtilsVK::freeImageBlock( *m_runtime.m_renderer->getDevice(), m_render_target_attachments.m_ssao_attachment           );
     UtilsVK::freeImageBlock( *m_runtime.m_renderer->getDevice(), m_render_target_attachments.m_ssao_blur_attachment      );
     UtilsVK::freeImageBlock(*m_runtime.m_renderer->getDevice(), m_render_target_attachments.m_ssao_noise_attachment);
+    UtilsVK::freeImageBlock(*m_runtime.m_renderer->getDevice(), m_render_target_attachments.m_shadow_attachment);
 }
 
 
@@ -511,5 +525,6 @@ void Engine::destroySamplers()
     {
         vkDestroySampler( m_runtime.m_renderer->getDevice()->getLogicalDevice(), sampler, nullptr );
     }
+    vkDestroySampler(m_runtime.m_renderer->getDevice()->getLogicalDevice(), m_render_target_attachments.m_ssao_noise_attachment.m_sampler, nullptr);
 }
 

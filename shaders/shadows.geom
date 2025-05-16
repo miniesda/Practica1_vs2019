@@ -6,6 +6,9 @@ layout(triangle_strip, max_vertices = 30) out;
 #extension GL_ARB_shader_draw_parameters : enable
 
 layout( location = 0 ) in vec3 g_position[];
+layout( location = 1 ) in vec3 g_normal[];
+layout( location = 2 ) in vec2 g_uv[];
+layout( location = 3 ) in flat int g_instance[];
 
 //globals
 struct LightData
@@ -33,10 +36,14 @@ layout( std140, set = 0, binding = 0 ) uniform PerFrameData
 
 
 void main() {
-    
     for (int i = 0; i < per_frame_data.m_number_of_lights; ++i) {
 
        // TBD
-      
+       gl_Layer = i;
+       for (int j = 0; j<3; j++){
+           gl_Position = per_frame_data.m_lights[i].m_view_projection  *  per_frame_data.m_inv_view * vec4(g_position[j],1);
+           EmitVertex();
+       }
+       EndPrimitive();
     }
 }

@@ -7,7 +7,7 @@
 
 using namespace MiniEngine;
 
-#ifndef DEBUG
+#ifdef _DEBUG
 PFN_vkDebugMarkerSetObjectTagEXT vkDebugMarkerSetObjectTag = VK_NULL_HANDLE;
 PFN_vkDebugMarkerSetObjectNameEXT vkDebugMarkerSetObjectName = VK_NULL_HANDLE;
 PFN_vkCmdDebugMarkerBeginEXT vkCmdDebugMarkerBegin = VK_NULL_HANDLE;
@@ -18,7 +18,7 @@ bool is_active = false;
 
 void UtilsVK::setupCallbacks(DeviceVK &i_device)
 {
-#ifndef DEBUG
+#ifdef _DEBUG
     assert(false == is_active);
 
     vkDebugMarkerSetObjectTag = (PFN_vkDebugMarkerSetObjectTagEXT)vkGetDeviceProcAddr(i_device.getLogicalDevice(),
@@ -39,7 +39,7 @@ void UtilsVK::setupCallbacks(DeviceVK &i_device)
 void UtilsVK::setObjectName(VkDevice i_device, uint64_t i_object, VkDebugReportObjectTypeEXT i_object_type,
                             const char *i_name)
 {
-#ifndef DEBUG
+#ifdef _DEBUG
     // Check for valid function pointer (may not be present if not running in a debugging application)
     if (is_active)
     {
@@ -57,7 +57,7 @@ void UtilsVK::setObjectName(VkDevice i_device, uint64_t i_object, VkDebugReportO
 void UtilsVK::setObjectTag(VkDevice i_device, uint64_t i_object, VkDebugReportObjectTypeEXT i_object_type,
                            uint64_t i_name, size_t i_tag_size, const void *i_tag)
 {
-#ifndef DEBUG
+#ifdef _DEBUG
     // Check for valid function pointer (may not be present if not running in a debugging application)
     if (is_active)
     {
@@ -76,7 +76,7 @@ void UtilsVK::setObjectTag(VkDevice i_device, uint64_t i_object, VkDebugReportOb
 // Start a new debug marker region
 void UtilsVK::beginRegion(VkCommandBuffer i_cmd_buffer, const char *i_pmarker_name, glm::vec4 i_color)
 {
-#ifndef DEBUG
+#ifdef _DEBUG
     // Check for valid function pointer (may not be present if not running in a debugging application)
     if (is_active)
     {
@@ -93,7 +93,7 @@ void UtilsVK::beginRegion(VkCommandBuffer i_cmd_buffer, const char *i_pmarker_na
 // Insert a new debug marker into the command buffer
 void UtilsVK::insert(VkCommandBuffer i_cmd_buffer, std::string i_marker_name, glm::vec4 i_color)
 {
-#ifndef DEBUG
+#ifdef _DEBUG
     // Check for valid function pointer (may not be present if not running in a debugging application)
     if (is_active)
     {
@@ -111,7 +111,7 @@ void UtilsVK::insert(VkCommandBuffer i_cmd_buffer, std::string i_marker_name, gl
 // End the current debug marker region
 void UtilsVK::endRegion(VkCommandBuffer cmdBuffer)
 {
-#ifndef DEBUG
+#ifdef _DEBUG
     // Check for valid function (may not be present if not running in a debugging application)
     if (vkCmdDebugMarkerEnd)
     {

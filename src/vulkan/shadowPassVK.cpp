@@ -1,6 +1,6 @@
 #include "common.h"
 #include "vulkan/utilsVK.h"
-#include "vulkan/deferredPassVKPrepass.h"
+#include "vulkan/shadowPassVK.h"
 #include "vulkan/rendererVK.h"
 #include "vulkan/deviceVK.h"
 #include "vulkan/windowVK.h"
@@ -15,7 +15,7 @@
 using namespace MiniEngine;
 
 
-DeferredPassVKPrepass::DeferredPassVKPrepass(
+ShadowPassVK::ShadowPassVK(
     const Runtime& i_runtime,
     const ImageBlock& i_depth_buffer ):
     RenderPassVK         ( i_runtime             ),
@@ -28,12 +28,12 @@ DeferredPassVKPrepass::DeferredPassVKPrepass(
 }
 
 
-DeferredPassVKPrepass::~DeferredPassVKPrepass()
+ShadowPassVK::~ShadowPassVK()
 {
 }
 
 
-bool DeferredPassVKPrepass::initialize()
+bool ShadowPassVK::initialize()
 {
     RendererVK& renderer = *m_runtime.m_renderer;
 
@@ -45,7 +45,7 @@ bool DeferredPassVKPrepass::initialize()
     //SHADER STAGES
     {
         VkShaderModule vert_module        = m_runtime.m_shader_registry->loadShader( "./shaders/vert.spv"       , VK_SHADER_STAGE_VERTEX_BIT   );
-        
+        VkShaderModule geom_module        = m_runtime.m_shader_registry->loadShader( "./shaders/shadows.spv"    , VK_SHADER_STAGE_GEOMETRY_BIT );
         { // difuse
             VkPipelineShaderStageCreateInfo vert_shader{};
             vert_shader.sType   = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -53,8 +53,15 @@ bool DeferredPassVKPrepass::initialize()
             vert_shader.module  = vert_module;
             vert_shader.pName   = "main";
 
+            VkPipelineShaderStageCreateInfo geom_shader{};
+            geom_shader.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            geom_shader.stage = VK_SHADER_STAGE_GEOMETRY_BIT;
+            geom_shader.module = geom_module;
+            geom_shader.pName = "main";
 
-            m_pipelines[ static_cast<uint32_t>( Material::TMaterial::Diffuse ) ].m_shader_stages[ 0 ] = vert_shader;
+            m_pipelines[ 0 ].m_shader_stages[ 0 ] = vert_shader;
+
+            m_pipelines[ 0 ].m_shader_stages[ 1 ] = geom_shader;
         }
     }
 
@@ -75,7 +82,7 @@ bool DeferredPassVKPrepass::initialize()
 }
 
 
-void DeferredPassVKPrepass::shutdown()
+void ShadowPassVK::shutdown()
 {
     RendererVK& renderer = *m_runtime.m_renderer;
 
@@ -103,7 +110,7 @@ void DeferredPassVKPrepass::shutdown()
 }
 
 
-VkCommandBuffer DeferredPassVKPrepass::draw( const Frame& i_frame)
+VkCommandBuffer ShadowPassVK::draw( const Frame& i_frame)
 {
     RendererVK& renderer = *m_runtime.m_renderer;
 
@@ -118,8 +125,8 @@ VkCommandBuffer DeferredPassVKPrepass::draw( const Frame& i_frame)
     VkCommandBufferBeginInfo begin_info{};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-    uint32_t width = 0, height = 0;
-    renderer.getWindow().getWindowSize( width, height );
+    uint32_t width = shadowResol, height = shadowResol;
+    //renderer.getWindow().getWindowSize( width, height );
 
     VkRenderPassBeginInfo render_pass_info{};
     render_pass_info.sType                = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -139,7 +146,7 @@ VkCommandBuffer DeferredPassVKPrepass::draw( const Frame& i_frame)
         throw MiniEngineException( "failed to begin recording command buffer!" );
     }
     
-    UtilsVK::beginRegion( current_cmd, "Depth Prepass", Vector4f( 0.0f, 0.5f, 0.0f, 1.0f ) );
+    UtilsVK::beginRegion( current_cmd, "Shadow Prepass", Vector4f( 0.0f, 0.5f, 0.0f, 1.0f ) );
     vkCmdBeginRenderPass( current_cmd, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE );
 
     
@@ -166,19 +173,19 @@ VkCommandBuffer DeferredPassVKPrepass::draw( const Frame& i_frame)
 }
 
 
-void DeferredPassVKPrepass::addEntityToDraw( const EntityPtr i_entity )
+void ShadowPassVK::addEntityToDraw( const EntityPtr i_entity )
 {
     m_entities_to_draw[ static_cast<uint32_t>( i_entity->getMaterial().getType() ) ].push_back( i_entity );
 }
 
 
 
-void DeferredPassVKPrepass::createFbo()
+void ShadowPassVK::createFbo()
 {
     RendererVK& renderer = *m_runtime.m_renderer;
 
-    uint32_t width = 0, height = 0;
-    renderer.getWindow().getWindowSize( width, height );
+    uint32_t width = shadowResol, height = shadowResol;
+    //renderer.getWindow().getWindowSize( width, height );
 
     for( size_t i = 0; i < m_fbos.size(); i++ )
     {
@@ -193,7 +200,7 @@ void DeferredPassVKPrepass::createFbo()
         framebuffer_create_info.pAttachments    = attachments.data();
         framebuffer_create_info.width           = width;
         framebuffer_create_info.height          = height;
-        framebuffer_create_info.layers          = 1;
+        framebuffer_create_info.layers          = kMAX_NUMBER_LIGHTS;
         // Create the framebuffer
 
         if( vkCreateFramebuffer( renderer.getDevice()->getLogicalDevice(), &framebuffer_create_info, nullptr, &m_fbos[ i ] ) )
@@ -205,7 +212,7 @@ void DeferredPassVKPrepass::createFbo()
 
 
 
-void DeferredPassVKPrepass::createRenderPass()
+void ShadowPassVK::createRenderPass()
 {
     RendererVK& renderer = *m_runtime.m_renderer;
 
@@ -219,7 +226,7 @@ void DeferredPassVKPrepass::createRenderPass()
     attachments[ 0 ].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachments[ 0 ].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachments[ 0 ].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[ 0 ].finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachments[ 0 ].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     VkAttachmentReference depth_reference = {};
     depth_reference.attachment = 0;
@@ -272,7 +279,7 @@ void DeferredPassVKPrepass::createRenderPass()
 }
 
 
-void DeferredPassVKPrepass::createPipelines()
+void ShadowPassVK::createPipelines()
 {
     RendererVK& renderer = *m_runtime.m_renderer;
     
@@ -361,15 +368,15 @@ void DeferredPassVKPrepass::createPipelines()
     multisampling.flags                 = 0;
 
 
-    uint32 width = 0, height = 0;
-    renderer.getWindow().getWindowSize( width, height );
-    VkExtent2D extend{ width, height };
+    uint32 width = shadowResol, height = shadowResol;
+    //renderer.getWindow().getWindowSize( width, height );
+    VkExtent2D extend{ shadowResol, shadowResol };
 
     VkViewport viewport{};
     viewport.x          = 0.0f;
     viewport.y          = 0.0f;
-    viewport.width      = (float) width;
-    viewport.height     = (float) height;
+    viewport.width      = (float)width;
+    viewport.height     = (float)height;
     viewport.minDepth   = 0.0f;
     viewport.maxDepth   = 1.0f;
     
@@ -438,14 +445,14 @@ void DeferredPassVKPrepass::createPipelines()
 }
 
 
-void DeferredPassVKPrepass::createDescriptorLayout()
+void ShadowPassVK::createDescriptorLayout()
 {
     // PER FRAME
     VkDescriptorSetLayoutBinding per_frame_binding = {};
     per_frame_binding.binding                      = 0;
     per_frame_binding.descriptorCount              = 1;
     per_frame_binding.descriptorType               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    per_frame_binding.stageFlags                   = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    per_frame_binding.stageFlags                   = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_GEOMETRY_BIT;
 
     VkDescriptorSetLayoutCreateInfo set_per_frame_info = {};
     set_per_frame_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -483,7 +490,7 @@ void DeferredPassVKPrepass::createDescriptorLayout()
 }
 
 
-void DeferredPassVKPrepass::createDescriptors()
+void ShadowPassVK::createDescriptors()
 {
     //create a descriptor pool that will hold 10 uniform buffers
     std::vector<VkDescriptorPoolSize> sizes =

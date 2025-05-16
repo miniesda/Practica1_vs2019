@@ -82,4 +82,6 @@ namespace MiniEngine
     constexpr uint32_t kSSAO_KERNEL_SIZE = 64;
     constexpr uint32_t kSSAO_NOISE_DIM = 4;
 
+    constexpr uint32_t shadowResol = 1024;
+
 };

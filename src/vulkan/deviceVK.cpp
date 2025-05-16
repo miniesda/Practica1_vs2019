@@ -189,11 +189,11 @@ void DeviceVK::createDevice()
     device_create_info.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     device_create_info.queueCreateInfoCount = static_cast< uint32_t >( queue_create_infos.size() );
     device_create_info.pQueueCreateInfos    = queue_create_infos.data();
-    device_create_info.pEnabledFeatures     = &m_physical_device_features;
+    device_create_info.pEnabledFeatures = nullptr; // &m_physical_device_features;
     device_create_info.pNext                = nullptr;
 
     // Enable the debug marker extension if it is present (likely meaning a debugging tool is present)
-#ifdef DEBUG
+#ifdef _DEBUG
     if( std::find( m_supported_extensions.begin(), m_supported_extensions.end(), VK_EXT_DEBUG_UTILS_EXTENSION_NAME ) != m_supported_extensions.end() )
     {
         m_extensions.push_back( VK_EXT_DEBUG_UTILS_EXTENSION_NAME );
@@ -297,6 +297,7 @@ void DeviceVK::createDevice()
 
         device_create_info.enabledExtensionCount    = ( uint32_t )m_extensions.size();
         device_create_info.ppEnabledExtensionNames  = m_extensions.data();
+        device_create_info.pNext = &m_physical_device_features2;
     }
 
     if( vkCreateDevice( m_physical_device, &device_create_info, nullptr, &m_logical_device ) )
@@ -304,7 +305,7 @@ void DeviceVK::createDevice()
         throw MiniEngineException( "Error creating devices" );
     }
 
-#ifdef DEBUG
+#ifdef _DEBUG
     if( is_markers_enabled )
     {
         UtilsVK::setupCallbacks( *this );   

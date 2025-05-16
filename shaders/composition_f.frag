@@ -12,6 +12,7 @@ struct LightData
     vec4 m_light_pos;
     vec4 m_radiance;
     vec4 m_attenuattion;
+    mat4 m_view_projection;
 };
 
 layout( std140, set = 0, binding = 0 ) uniform PerFrameData
@@ -33,9 +34,27 @@ layout ( set = 0, binding = 2 ) uniform sampler2D i_position_and_depth;
 layout ( set = 0, binding = 3 ) uniform sampler2D i_normal;
 layout ( set = 0, binding = 4 ) uniform sampler2D i_material;
 layout ( set = 0, binding = 5 ) uniform sampler2D i_ssao;
+layout ( set = 0, binding = 6 ) uniform sampler2DArray i_shadow;
 
 layout(location = 0) out vec4 out_color;
 
+
+#define ShadowBias 0.0001
+
+float evalVisibility(vec3 frag_pos, uint lightEval)
+{   
+    vec4 pos = per_frame_data.m_lights[lightEval].m_view_projection * per_frame_data.m_inv_view * vec4(frag_pos,1);
+
+    pos.xyz/=pos.w;
+
+    pos.xy = pos.xy*0.5+0.5;
+
+    float depth = texture(i_shadow,vec3(pos.xy,lightEval)).r + ShadowBias;
+
+    if(depth > pos.z) //Change to smooth shadows //1 illum
+        return 1;
+    return 0;
+}
 
 vec3 evalDiffuse()
 {
@@ -56,18 +75,18 @@ vec3 evalDiffuse()
             case 0: //directional
             {
                 vec3 l = normalize( -light.m_light_pos.xyz );
-                shading += max( dot( n, l ), 0.0 ) * albedo.rgb * light.m_radiance.rgb;
+                shading += max( dot( n, l ), 0.0 ) * albedo.rgb * evalVisibility(frag_pos, id_light) * light.m_radiance.rgb;
                 break;
             }
             case 1: //point
             {
                 vec3 l = light.m_light_pos.xyz - frag_pos;
                 float dist = length( l );
-                float att = 1.0 / (light.m_attenuattion.x + light.m_attenuattion.y * dist + light.m_attenuattion.z * dist * dist );
+                float att = 1.0 / (light.m_attenuattion.x + light.m_attenuattion.y * dist + light.m_attenuattion.z * dist * dist);
                 vec3 radiance = light.m_radiance.rgb * att;
                 l = normalize( l );
 
-                shading += max( dot( n, l ), 0.0 ) * albedo.rgb * radiance;
+                shading += max( dot( n, l ), 0.0 ) * albedo.rgb * radiance * evalVisibility(frag_pos, id_light);
                 break;
             }
             case 2: //ambient
@@ -140,7 +159,7 @@ vec3 evalMicrofac(float metal, float rough)
             {
                 vec3 l = normalize( -light.m_light_pos.xyz );
                 
-                shading += max( dot( n, l ), 0.0 ) * brdf(l, v, n, albedo.rgb, rough, metal, F0) * light.m_radiance.rgb;
+                shading += max( dot( n, l ), 0.0 ) * brdf(l, v, n, albedo.rgb, rough, metal, F0) * evalVisibility(frag_pos, id_light) * light.m_radiance.rgb;
                 break;
             }
             case 1: //point
@@ -151,7 +170,7 @@ vec3 evalMicrofac(float metal, float rough)
                 vec3 radiance = light.m_radiance.rgb * att;
                 l = normalize( l );
 
-                shading += max( dot( n, l ), 0.0 ) * brdf(l, v, n, albedo.rgb, rough, metal, F0) * radiance;
+                shading += max( dot( n, l ), 0.0 ) * brdf(l, v, n, albedo.rgb, rough, metal, F0) * radiance * evalVisibility(frag_pos, id_light);
                 break;
             }
             case 2: //ambient

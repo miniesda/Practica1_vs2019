@@ -107,7 +107,7 @@ void RendererVK::shutdown()
 void RendererVK::createInstance()
 {
     // Validation can also be forced via a define
-#if defined(DEBUG)
+#if defined(_DEBUG)
     bool enable_validation_layers = true;
 #else
     bool enable_validation_layers = false;
@@ -192,7 +192,7 @@ void RendererVK::createInstance()
     }
 
 
-#ifdef DEBUG
+#ifdef _DEBUG
     VkDebugUtilsMessengerCreateInfoEXT create_info;
     create_info.sType               = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
     create_info.messageSeverity     = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;

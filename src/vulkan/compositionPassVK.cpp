@@ -21,6 +21,7 @@ CompositionPassVK::CompositionPassVK(
     const ImageBlock& i_in_normal_attachment,
     const ImageBlock& i_in_material_attachment,
     const ImageBlock& i_in_ssao_attachment,
+    const ImageBlock& i_in_shadow_attachment,
     const std::array<ImageBlock, 3>& i_output_swap_images
 ) :
     RenderPassVK(i_runtime),
@@ -29,6 +30,7 @@ CompositionPassVK::CompositionPassVK(
     m_in_normal_attachment(i_in_normal_attachment),
     m_in_material_attachment(i_in_material_attachment),
     m_in_ssao_attachment(i_in_ssao_attachment),
+    m_in_shadow_attachment(i_in_shadow_attachment),
     m_output_swap_images(i_output_swap_images)
 {
     for (auto cmd : m_command_buffer)
@@ -423,7 +425,7 @@ void CompositionPassVK::createPipelines()
 
 void CompositionPassVK::createDescriptorLayout()
 {
-    std::array<VkDescriptorSetLayoutBinding, 6> layout_bindings;
+    std::array<VkDescriptorSetLayoutBinding, 7> layout_bindings;
 
     ////// PER FRAME
     layout_bindings[0] = {};
@@ -462,6 +464,12 @@ void CompositionPassVK::createDescriptorLayout()
     layout_bindings[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     layout_bindings[5].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+    layout_bindings[6] = {};
+    layout_bindings[6].binding = 6;
+    layout_bindings[6].descriptorCount = 1;
+    layout_bindings[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    layout_bindings[6].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
 
     VkDescriptorSetLayoutCreateInfo set_attachment_color_info = {};
     set_attachment_color_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -482,8 +490,8 @@ void CompositionPassVK::createDescriptors()
     //create a descriptor pool that will hold 10 uniform buffers
     std::vector<VkDescriptorPoolSize> sizes =
     {
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER        , 10 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 }
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER        , 3 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 18 }
     };
 
     VkDescriptorPoolCreateInfo pool_info = {};
@@ -517,7 +525,7 @@ void CompositionPassVK::createDescriptors()
         binfo.offset = 0;
         binfo.range = sizeof(PerFrameData);
 
-        std::array<VkDescriptorImageInfo, 5> image_infos;
+        std::array<VkDescriptorImageInfo, 6> image_infos;
         image_infos[0].sampler = m_in_color_attachment.m_sampler;
         image_infos[0].imageView = m_in_color_attachment.m_image_view;
         image_infos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -537,9 +545,12 @@ void CompositionPassVK::createDescriptors()
         image_infos[4].sampler = m_in_ssao_attachment.m_sampler;
         image_infos[4].imageView = m_in_ssao_attachment.m_image_view;
         image_infos[4].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    
 
-        std::array<VkWriteDescriptorSet, 6> set_write;
+        image_infos[5].sampler = m_in_shadow_attachment.m_sampler;
+        image_infos[5].imageView = m_in_shadow_attachment.m_image_view;
+        image_infos[5].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        std::array<VkWriteDescriptorSet, 7> set_write;
 
         set_write[0] = {};
         set_write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -595,6 +606,15 @@ void CompositionPassVK::createDescriptors()
         set_write[5].descriptorCount = 1;
         set_write[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         set_write[5].pImageInfo = &image_infos[4];
+
+        set_write[6] = {};
+        set_write[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        set_write[6].pNext = nullptr;
+        set_write[6].dstBinding = 6;
+        set_write[6].dstSet = m_descriptor_sets[i].m_textures_descriptor;
+        set_write[6].descriptorCount = 1;
+        set_write[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        set_write[6].pImageInfo = &image_infos[5];
 
         vkUpdateDescriptorSets(m_runtime.m_renderer->getDevice()->getLogicalDevice(), set_write.size(), set_write.data(), 0, nullptr);
     }
