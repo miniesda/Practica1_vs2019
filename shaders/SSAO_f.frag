@@ -46,9 +46,9 @@ void main()
 // get input for SSAO algorithm
     vec2 noiseScale = vec2(textureSize(i_position_and_depth, 0)) / vec2(textureSize(i_noise, 0));
 
-    vec3 fragPos = texture(i_position_and_depth, f_uvs).xyz;
-    vec3 normal = texture (i_normal, f_uvs).rgb * 2.0 - 1.0;
-    vec3 randomVec = vec3(texture (i_noise, f_uvs* noiseScale).xy, 0); 
+    vec3 fragPos = mat3(per_frame_data.m_view) * texture(i_position_and_depth, f_uvs).xyz;
+    vec3 normal =  mat3(per_frame_data.m_inv_view) * normalize(texture (i_normal, f_uvs).rgb * 2.0 - 1.0);
+    vec3 randomVec = texture (i_noise, f_uvs* noiseScale).xyz; 
     
     // create TBN change-of-basis matrix: from tangent-space to view-space
     
@@ -73,7 +73,7 @@ void main()
         offset.xy = offset.xy * 0.5 + 0.5; // transform to range 0.0 1.0
 
         // get sample depth
-        float sampleDepth = (per_frame_data.m_view * vec4( texture (i_position_and_depth, offset.xy).xyz, 1) ).z; // get depth value of kernel sample
+        float sampleDepth = texture (i_position_and_depth, offset.xy).z; // get depth value of kernel sample
     
         // range check & accumulate
         float rangeCheck = smoothstep(0.0, 1.0, radius / abs (fragPos.z - sampleDepth));

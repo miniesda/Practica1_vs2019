@@ -102,7 +102,7 @@ void DeviceVK::createPhysicalDevice()
 
     // Select physical device to be used for the Vulkan example
     // Defaults to the first device unless specified by command line
-    uint32_t selected_device = 0;
+    uint32_t selected_device = 2;
 
     m_physical_device = physical_devices[ selected_device ];
 
@@ -189,8 +189,8 @@ void DeviceVK::createDevice()
     device_create_info.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     device_create_info.queueCreateInfoCount = static_cast< uint32_t >( queue_create_infos.size() );
     device_create_info.pQueueCreateInfos    = queue_create_infos.data();
-    device_create_info.pEnabledFeatures = nullptr; // &m_physical_device_features;
-    device_create_info.pNext                = nullptr;
+    //device_create_info.pEnabledFeatures = nullptr; // &m_physical_device_features;
+    device_create_info.pNext                = VK_NULL_HANDLE;
 
     // Enable the debug marker extension if it is present (likely meaning a debugging tool is present)
 #ifdef _DEBUG
@@ -209,7 +209,7 @@ void DeviceVK::createDevice()
 
     //----------------------------------------------------------------------------------------------------------------------------------------------
     //Raytracing extensions
-
+    
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures = {};
     VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures = {};
     VkPhysicalDeviceBufferDeviceAddressFeaturesKHR bufferDeviceAddressFeatures = {};
@@ -282,7 +282,7 @@ void DeviceVK::createDevice()
         *pNextHead = &rayQueryFeatures;
         pNextHead = &rayQueryFeatures.pNext;
     }
-
+    
     //----------------------------------------------------------------------------------------------------------------------------------------------
 
     if( m_extensions.size() > 0 )

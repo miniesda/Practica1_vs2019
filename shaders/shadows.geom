@@ -41,7 +41,7 @@ void main() {
        // TBD
        gl_Layer = i;
        for (int j = 0; j<3; j++){
-           gl_Position = per_frame_data.m_lights[i].m_view_projection  *  per_frame_data.m_inv_view * vec4(g_position[j],1);
+           gl_Position = per_frame_data.m_lights[i].m_view_projection * vec4(g_position[j],1);
            EmitVertex();
        }
        EndPrimitive();

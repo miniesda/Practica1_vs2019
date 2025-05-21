@@ -253,7 +253,6 @@ void Engine::destroySyncObjects()
     }
 }
 
-
 void Engine::createRenderPasses ()
 { 
     //temp
@@ -305,7 +304,6 @@ void Engine::createRenderPasses ()
 
     m_render_passes.push_back(blur_pass);
 
-
     auto composition_pass = std::make_shared<CompositionPassVK>( m_runtime, 
         m_render_target_attachments.m_color_attachment, 
         m_render_target_attachments.m_position_depth_attachment, 
@@ -313,6 +311,7 @@ void Engine::createRenderPasses ()
         m_render_target_attachments.m_material_attachment, 
         m_render_target_attachments.m_ssao_blur_attachment,
         m_render_target_attachments.m_shadow_attachment,
+        m_scene->getAccelStructure(),
         m_runtime.m_renderer->getWindow().getSwapChainImages() );
     composition_pass->initialize();
 
@@ -355,9 +354,10 @@ void Engine::updateGlobalBuffers()
     PerFrameData perframe_data;
     Vector3f cam_pos = m_scene->getCamera().getCameraPos();
     perframe_data.m_camera_pos          = Vector4f( cam_pos.x, cam_pos.y, cam_pos.z, 0.0f );
+
+    perframe_data.m_view_projection = const_cast<Camera&>(m_scene->getCamera()).getViewProjection();
     perframe_data.m_projection          = const_cast< Camera& >( m_scene->getCamera() ).getProjection();
     perframe_data.m_view                = const_cast< Camera& >( m_scene->getCamera() ).getView();
-    perframe_data.m_view_projection     = const_cast< Camera& >( m_scene->getCamera() ).getViewProjection();
     perframe_data.m_inv_projection      = glm::inverse( perframe_data.m_projection          );
     perframe_data.m_inv_view            = glm::inverse( perframe_data.m_view                );
     perframe_data.m_inv_view_projection = glm::inverse( perframe_data.m_inv_view_projection );
@@ -369,7 +369,7 @@ void Engine::updateGlobalBuffers()
         assert( perframe_data.m_number_of_lights < kMAX_NUMBER_LIGHTS );
        
         auto light = m_scene->getLights()[ perframe_data.m_number_of_lights ];
-
+        /*
         //Convert the light pos
         glm::vec3 lightPos;
         if (light->m_data.m_type == Light::LightType::Directional)
@@ -378,8 +378,9 @@ void Engine::updateGlobalBuffers()
             lightPos = glm::vec3(perframe_data.m_view * glm::vec4(light->m_data.m_position, 1));
         else
             lightPos = light->m_data.m_position;
+            */
 
-        perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_light_pos    = Vector4f( lightPos.x   , lightPos.y, lightPos.z   , light->m_data.m_type );
+        perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_light_pos    = Vector4f( light->m_data.m_position, light->m_data.m_type );
         perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_radiance     = Vector4f( light->m_data.m_radiance.x   , light->m_data.m_radiance.y   , light->m_data.m_radiance.z   , 0.0f                 );
         perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_attenuattion = Vector4f( light->m_data.m_attenuation.x, light->m_data.m_attenuation.y, light->m_data.m_attenuation.z, 0.0f                 );
         perframe_data.m_lights[ perframe_data.m_number_of_lights ].m_view_projection = Light::getLightSpaceMatrix(light, const_cast< Camera& >( m_scene->getCamera() ) );

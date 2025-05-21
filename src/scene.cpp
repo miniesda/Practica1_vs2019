@@ -3,6 +3,10 @@
 #include "light.h"
 #include "entity.h"
 #include "common.h"
+#include "vulkan/utilsVK.h"
+#include "vulkan/rendererVK.h"
+#include "vulkan/deviceVK.h"
+#include "vulkan/meshVK.h"
 
 
 using namespace MiniEngine;
@@ -81,14 +85,36 @@ Scene::~Scene()
        
 bool Scene::initialize()
 {
+    
+    std::vector<Matrix4f> Models;
+    std::vector<VkAccelerationStructureKHR> Blas;
 
 
+    for (auto entity : m_entities)
+    {
+        Models.push_back(entity->getTransform().getTransform());
+    }
+
+    for (auto entity: m_entities)
+    {
+        Blas.push_back(entity->getMesh().getAccStruc());
+    }
+
+    UtilsVK::createTLAS(*m_runtime.m_renderer->getDevice(), Models, Blas, accelerationTlas, bufferTlas, memoryTlas);
+    
     return true;
 }
         
 
 void Scene::shutdown()
 {
+    if (bufferTlas)
+    {
+        vkDestroyAccelerationStructure(m_runtime.m_renderer->getDevice()->getLogicalDevice(), accelerationTlas, nullptr);
+        vkDestroyBuffer(m_runtime.m_renderer->getDevice()->getLogicalDevice(), bufferTlas, nullptr);
+        vkFreeMemory(m_runtime.m_renderer->getDevice()->getLogicalDevice(), memoryTlas, nullptr);
+    }
+
     for( auto light : m_lights )
     {
         light->shutdown();

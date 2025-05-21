@@ -22,6 +22,7 @@ CompositionPassVK::CompositionPassVK(
     const ImageBlock& i_in_material_attachment,
     const ImageBlock& i_in_ssao_attachment,
     const ImageBlock& i_in_shadow_attachment,
+    const VkAccelerationStructureKHR i_accelTlas,
     const std::array<ImageBlock, 3>& i_output_swap_images
 ) :
     RenderPassVK(i_runtime),
@@ -31,6 +32,7 @@ CompositionPassVK::CompositionPassVK(
     m_in_material_attachment(i_in_material_attachment),
     m_in_ssao_attachment(i_in_ssao_attachment),
     m_in_shadow_attachment(i_in_shadow_attachment),
+    accelerationTlas(i_accelTlas),
     m_output_swap_images(i_output_swap_images)
 {
     for (auto cmd : m_command_buffer)
@@ -425,7 +427,7 @@ void CompositionPassVK::createPipelines()
 
 void CompositionPassVK::createDescriptorLayout()
 {
-    std::array<VkDescriptorSetLayoutBinding, 7> layout_bindings;
+    std::array<VkDescriptorSetLayoutBinding, 8> layout_bindings;
 
     ////// PER FRAME
     layout_bindings[0] = {};
@@ -469,7 +471,13 @@ void CompositionPassVK::createDescriptorLayout()
     layout_bindings[6].descriptorCount = 1;
     layout_bindings[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     layout_bindings[6].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
+    
+    layout_bindings[7] = {};
+    layout_bindings[7].binding = 7;
+    layout_bindings[7].descriptorCount = 1;
+    layout_bindings[7].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+    layout_bindings[7].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    
 
     VkDescriptorSetLayoutCreateInfo set_attachment_color_info = {};
     set_attachment_color_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -491,7 +499,8 @@ void CompositionPassVK::createDescriptors()
     std::vector<VkDescriptorPoolSize> sizes =
     {
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER        , 3 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 18 }
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 18 },
+        { VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 3}
     };
 
     VkDescriptorPoolCreateInfo pool_info = {};
@@ -550,7 +559,15 @@ void CompositionPassVK::createDescriptors()
         image_infos[5].imageView = m_in_shadow_attachment.m_image_view;
         image_infos[5].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-        std::array<VkWriteDescriptorSet, 7> set_write;
+        
+        VkWriteDescriptorSetAccelerationStructureKHR writeDescriptorSetAccelerationStructure{};
+        
+        writeDescriptorSetAccelerationStructure.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+        writeDescriptorSetAccelerationStructure.accelerationStructureCount = 1;
+        writeDescriptorSetAccelerationStructure.pAccelerationStructures = &accelerationTlas;
+        
+
+        std::array<VkWriteDescriptorSet, 8> set_write;
 
         set_write[0] = {};
         set_write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -615,7 +632,17 @@ void CompositionPassVK::createDescriptors()
         set_write[6].descriptorCount = 1;
         set_write[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         set_write[6].pImageInfo = &image_infos[5];
+        
+        set_write[7] = {};
+        set_write[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        set_write[7].pNext = &writeDescriptorSetAccelerationStructure;
+        set_write[7].dstBinding = 7;
+        set_write[7].dstSet = m_descriptor_sets[i].m_textures_descriptor;
+        set_write[7].descriptorCount = 1;
+        set_write[7].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+        
 
         vkUpdateDescriptorSets(m_runtime.m_renderer->getDevice()->getLogicalDevice(), set_write.size(), set_write.data(), 0, nullptr);
     }
+
 }

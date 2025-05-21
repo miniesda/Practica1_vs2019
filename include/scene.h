@@ -1,10 +1,10 @@
 #pragma once
 
 #include "common.h"
+#include "runtime.h"
  
 namespace MiniEngine
 {
-    struct Runtime;
     class Camera;
     class Light;
     class Entity;
@@ -18,7 +18,7 @@ namespace MiniEngine
     class Scene final 
     {
     public:
-        explicit Scene( const Runtime& i_runtime, const std::string& i_path ) : m_runtime( i_runtime ), m_path( i_path ){}
+        explicit Scene( const Runtime& i_runtime, const std::string& i_path ) : m_runtime( i_runtime ), m_path( i_path ), bufferTlas (VK_NULL_HANDLE){}
         ~Scene();
 
         bool initialize();
@@ -47,6 +47,11 @@ namespace MiniEngine
             return m_path;
         }
 
+        const VkAccelerationStructureKHR& getAccelStructure() const
+        {
+            return accelerationTlas;
+        }
+
     private:
         Scene( const Scene& ) = delete;
         Scene& operator=(const Scene& ) = delete;
@@ -57,6 +62,8 @@ namespace MiniEngine
         std::vector<EntityPtr> m_entities;
         CameraPtr              m_camera;
 
-        
+        VkAccelerationStructureKHR accelerationTlas;
+        VkBuffer bufferTlas;
+        VkDeviceMemory memoryTlas;
     };
 };

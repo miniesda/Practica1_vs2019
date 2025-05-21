@@ -18,6 +18,8 @@ namespace MiniEngine
 
         void draw( VkCommandBuffer& i_command_buffer, const uint32_t i_instance_id );
 
+        VkAccelerationStructureKHR& getAccStruc() { return m_blas; }
+
     private:
         MeshVK( const MeshVK& ) = delete;
         MeshVK& operator=(const MeshVK& ) = delete;
@@ -36,6 +38,10 @@ namespace MiniEngine
         VkBuffer                                       m_data_buffer;
         VkDeviceMemory                                 m_indices_memory;
         VkDeviceMemory                                 m_data_memory;
+
+        VkAccelerationStructureKHR                     m_blas;
+        VkBuffer                                       m_blas_buffer;
+        VkDeviceMemory                                 m_blas_memory;
     
     };
 };
