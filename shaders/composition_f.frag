@@ -6,16 +6,22 @@
 #define PI   3.14159265358979323846264338327950288
 
 //---------------------------------------------------------------------------------------------------------------------------
-//True for shade map, false for RTX
+//-------------------------------------------------------------------
+
+//True for shade map, false for RTX, and compile
 bool shadeOrRTX = false;
 
-#define ShadowBias 0.00015
+//-------------------------------------------------------------------
 
+#define ShadowBias 0.00015
 #define PCF_SIZE 9
 #define PCF_SAMPLES (PCF_SIZE * PCF_SIZE)
 #define FILTER_SIZE (1.0 / 2048.0)
 
+
+
 #define num_samples 16
+#define rads 0.04
 
 //---------------------------------------------------------------------------------------------------------------------------
 
@@ -97,17 +103,14 @@ float PhiGen(int id, float offset)
 
 vec3 sampleInCone(vec3 center, float randScale, int i)
 {
-    float coneAngle = PI/360.0;
+    float coneAngle = rand(center.xy + randScale) * rads;
     float cosAlpha = cos(coneAngle);
     float sinAlpha = sin(coneAngle);
     
-    // Add some randomization to the sampling
     float phi = PhiGen(i, randScale * num_samples);
-    
-    // Generate sample direction in local space
     vec3 dir = vec3(sinAlpha * cos(phi), sinAlpha * sin(phi), cosAlpha);
     
-    // Create orthonormal basis around the center direction
+    // Create orthonormal basis
     vec3 T, B;
     if(abs(center.z) < 0.999)
         T = normalize(cross(vec3(0.0, 0.0, 1.0), center));
@@ -115,33 +118,55 @@ vec3 sampleInCone(vec3 center, float randScale, int i)
         T = normalize(cross(vec3(1.0, 0.0, 0.0), center));
     B = cross(center, T);
     
-    // Transform the sample direction to world space
     return normalize(dir.x * T + dir.y * B + dir.z * center);
 }
 
 float evalVisibilityRayTraced(vec3 origin, vec3 L, float MaxDistance)
 {
-    
+    // Base visibility with the main ray
     float visibility = 0.0;
+    float randScale = rand(f_uvs + origin.xy); // Random seed based on screen position
 
     rayQueryEXT rayQuery;
-    rayQueryInitializeEXT(rayQuery, 
-    TLAS, 
-    gl_RayFlagsNoneEXT,
-    0xFF,               //mask
-    origin,             //pos ini ray
-    1e-5,               //minimum distance
-    L,             //direction ray
-    MaxDistance);       //max distance
+        rayQueryInitializeEXT(rayQuery, 
+            TLAS, 
+            gl_RayFlagsNoneEXT,
+            0xFF,               // mask
+            origin,             // pos ini ray
+            1e-5,              // minimum distance
+            L,          // direction ray
+            MaxDistance);       // max distance
 
-    rayQueryProceedEXT(rayQuery);
+        rayQueryProceedEXT(rayQuery);
+        
+        // Accumulate visibility
+        if (rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionNoneEXT)
+            visibility += 1.0 ;
 
-    // Check if there was a hit
-    if (rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionNoneEXT)
-        return 1;
-    return 0;
+    for (int i = 0; i < num_samples; i++)
+    {
+        // Jitter the ray direction slightly
+        vec3 jitteredL = sampleInCone(L, randScale, i);
+
+        rayQueryInitializeEXT(rayQuery, 
+            TLAS, 
+            gl_RayFlagsNoneEXT,
+            0xFF,               // mask
+            origin,             // pos ini ray
+            1e-5,              // minimum distance
+            jitteredL,          // direction ray
+            MaxDistance);       // max distance
+
+        rayQueryProceedEXT(rayQuery);
+        
+        // Accumulate visibility
+        if (rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionNoneEXT)
+            visibility += 1.0 ;
+    }
+    
+    // Average the samples
+    return visibility / float(num_samples + 1);
 }
-
 
 vec3 evalDiffuse()
 {
